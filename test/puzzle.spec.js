@@ -22,6 +22,19 @@ contract('ScavengerHunt', function([creator, player, clueAccount]) {
     assert.equal(receipt.logs[0].event, 'FoundClue');
   });
 
+  it("should let user unlock a clue with vrs", async function() {
+    const clues = makeAccounts(1);
+    const puzzle = await Puzzle.new(token.address, clues.map(acc => acc.address), { from: creator });
+
+    await token.approve(puzzle.address, web3.utils.toWei('100', 'ether'), { from: player });
+    await puzzle.stake(web3.utils.toWei('1', 'ether'), { from: player });
+
+    const signed = clues[0].sign(web3.utils.keccak256(player));
+    console.log(signed);
+    const { receipt } = await puzzle.findClueVRS(clues[0].address, signed.v, signed.r, signed.s, { from: player });
+    assert.equal(receipt.logs[0].event, 'FoundClue');
+  });
+
   it("should unlock a clue from the clue account", async function () {
     const puzzle = await Puzzle.new(token.address, [clueAccount], { from: creator });
 
@@ -71,6 +84,22 @@ contract('ScavengerHunt', function([creator, player, clueAccount]) {
     await puzzle.findClue(clues[0].address, signed.signature, { from: player });
 
     const { receipt } = await puzzle.redeem({ from: player });
+    
+    assert.equal(startingBalance.toString(), await token.balanceOf(player));
+  });
+
+
+  it("should let a winning team claim their stake in a single tx", async function () {
+    const clues = makeAccounts(1);
+    const puzzle = await Puzzle.new(token.address, clues.map(acc => acc.address), { from: creator });
+
+    const startingBalance = await token.balanceOf(player);
+
+    await token.approve(puzzle.address, web3.utils.toWei('100', 'ether'), { from: player });
+    await puzzle.stake(web3.utils.toWei('1', 'ether'), { from: player });
+
+    const signed = clues[0].sign(web3.utils.keccak256(player));
+    const receipt = await puzzle.findCluesAndRedeem([clues[0].address], [signed.v], [signed.r], [signed.s], { from: player });
     
     assert.equal(startingBalance.toString(), await token.balanceOf(player));
   });

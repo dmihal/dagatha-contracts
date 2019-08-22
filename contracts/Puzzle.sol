@@ -60,6 +60,10 @@ contract Puzzle is Ownable {
     return true;
   }
 
+  function foundClue(address user, uint8 clueNum) public view returns (bool) {
+    return state[user].foundClues[clueNum];
+  }
+
   function foundAllClues(address user) public view returns (bool) {
     State memory userState = state[user];
     for (uint256 i = 1; i <= numClues; i++) {
@@ -78,10 +82,45 @@ contract Puzzle is Ownable {
     return 0;
   }
 
+  function isSignatureValidVRS(address clue, uint8 v, bytes32 r, bytes32 s) public view returns (uint256) {
+    bytes memory prefix = "\x19Ethereum Signed Message:\n32";
+    bytes32 hash = keccak256(abi.encodePacked(prefix, addressHash(msg.sender)));
+
+    if (!(ecrecover(hash, v, r, s) == clue)) {
+      return 1;
+    }
+
+    return 0;
+  }
+
+  function findClues(address[] memory clues, uint8[] memory vs, bytes32[] memory rs, bytes32[] memory ss) public {
+    require(clues.length == vs.length);
+    require(clues.length == rs.length);
+    require(clues.length == ss.length);
+
+    for (uint i = 0; i < clues.length; i++) {
+      findClueVRS(clues[i], vs[i], rs[i], ss[i]);
+    }
+  }
+
   function findClue(address clue, bytes memory signature) public {
     require(state[msg.sender].staked > 0, 'Must stake');
     require(clueToClueNum[clue] > 0, 'Invalid clue');
     require(ECVerify.ecverify(addressHash(msg.sender), signature, clue), 'Invalid signature');
+
+    uint8 clueNum = clueToClueNum[clue];
+    state[msg.sender].foundClues[clueNum] = true;
+
+    emit FoundClue(msg.sender, clueNum);
+  }
+
+  function findClueVRS(address clue, uint8 v, bytes32 r, bytes32 s) public {
+    require(state[msg.sender].staked > 0, 'Must stake');
+    require(clueToClueNum[clue] > 0, 'Invalid clue');
+    bytes memory prefix = "\x19Ethereum Signed Message:\n32";
+    bytes32 hash = keccak256(abi.encodePacked(prefix, addressHash(msg.sender)));
+
+    require(ecrecover(hash, v, r, s) == clue, 'Invalid signature');
 
     uint8 clueNum = clueToClueNum[clue];
     state[msg.sender].foundClues[clueNum] = true;
@@ -98,6 +137,16 @@ contract Puzzle is Ownable {
     state[user].foundClues[clueNum] = true;
 
     emit FoundClue(user, clueNum);
+  }
+
+  function findCluesAndDonate(address[] memory clues, uint8[] memory vs, bytes32[] memory rs, bytes32[] memory ss, uint amount) public {
+    findClues(clues, vs, rs, ss);
+    donate(amount);
+  }
+
+  function findCluesAndRedeem(address[] memory clues, uint8[] memory vs, bytes32[] memory rs, bytes32[] memory ss) public {
+    findClues(clues, vs, rs, ss);
+    redeem();
   }
 
   function donate(uint amount) public {
